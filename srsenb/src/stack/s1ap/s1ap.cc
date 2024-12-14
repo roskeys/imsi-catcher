@@ -346,7 +346,7 @@ int s1ap::init(const s1ap_args_t& args_, rrc_interface_s1ap* rrc_)
     if (s1setup_proc.is_busy()) {
       logger.error("Failed to initiate S1Setup procedure: procedure is busy.");
     }
-    s1setup_proc.launch();
+    // s1setup_proc.launch();
   };
   mme_connect_timer.set(args.s1_connect_timer * 1000, mme_connect_run);
   // Setup S1Setup timeout
