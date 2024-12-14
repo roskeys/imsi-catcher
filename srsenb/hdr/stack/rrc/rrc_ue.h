@@ -82,6 +82,9 @@ public:
     unspecified
   };
 
+  void send_identity_request();
+  void extract_imsi(uint16_t rnti, uint8_t* msg, uint32_t msg_len);
+
   void send_connection_setup();
   void send_connection_reest(uint8_t ncc);
   void send_connection_reject(procedure_result_code cause);
