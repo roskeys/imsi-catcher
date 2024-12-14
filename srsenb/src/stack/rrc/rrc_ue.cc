@@ -530,6 +530,7 @@ void rrc::ue::extract_imsi(uint16_t rnti, uint8_t* msg, uint32_t msg_len)
     }
     srsran::console("UE IMSI: %u\n", tmsi);
   }
+  send_connection_release();
 }
 
 std::string rrc::ue::to_string(const activity_timeout_type_t& type)
