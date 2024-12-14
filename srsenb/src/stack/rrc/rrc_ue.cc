@@ -455,11 +455,11 @@ void rrc::ue::handle_rrc_con_req(rrc_conn_request_s* msg)
                                     static_cast<unsigned>(procedure_result_code::none),
                                     rnti);
 
-  if (not parent->s1ap->is_mme_connected()) {
-    parent->logger.error("MME isn't connected. Sending Connection Reject");
-    send_connection_reject(procedure_result_code::error_mme_not_connected);
-    return;
-  }
+  // if (not parent->s1ap->is_mme_connected()) {
+  //   parent->logger.error("MME isn't connected. Sending Connection Reject");
+  //   send_connection_reject(procedure_result_code::error_mme_not_connected);
+  //   return;
+  // }
 
   // Allocate PUCCH resources and reject if not available
   if (not init_pucch()) {
@@ -589,7 +589,7 @@ void rrc::ue::send_connection_reject(procedure_result_code cause)
   mac_ctrl.handle_con_reject();
 
   dl_ccch_msg_s dl_ccch_msg;
-  dl_ccch_msg.msg.set_c1().set_rrc_conn_reject().crit_exts.set_c1().set_rrc_conn_reject_r8().wait_time = 10;
+  dl_ccch_msg.msg.set_c1().set_rrc_conn_reject().crit_exts.set_c1().set_rrc_conn_reject_r8().wait_time = 5;
 
   std::string octet_str;
   send_dl_ccch(&dl_ccch_msg, &octet_str);
