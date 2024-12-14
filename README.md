@@ -1,25 +1,25 @@
-srsRAN
+IMSI catcher
 ======
 
-[![Build Status](https://github.com/srsran/srsRAN_4G/actions/workflows/ccpp.yml/badge.svg?branch=master)](https://github.com/srsran/srsRAN_4G/actions/workflows/ccpp.yml)
-[![CodeQL](https://github.com/srsran/srsRAN_4G/actions/workflows/codeql.yml/badge.svg?branch=master)](https://github.com/srsran/srsRAN_4G/actions/workflows/codeql.yml)
-[![Coverity](https://scan.coverity.com/projects/28268/badge.svg)](https://scan.coverity.com/projects/srsran_4g_agpl)
+# This program was made for research purpose and demonstrate how IMSI catcher work. Not for bad hacking!
 
-srsRAN is an open source 4G software radio suite developed by [SRS](http://www.srs.io). For 5G RAN, see our new O-RAN CU/DU solution - [srsRAN Project](https://www.github.com/srsran/srsran_project).
+This project setup a fake base station modified from SRSRAN and tries to attract cell phones to connect to the fake base station and extract the International Mobile Subscriber Identity.
 
-See the [srsRAN 4G project pages](https://www.srsran.com) for information, guides and project news.
+## What you need?
+- PC with linux installed (tested with ubuntu 22.04)
+- 1 SDR (tested with B210)
 
-The srsRAN suite includes:
-  * srsUE - a full-stack SDR 4G UE application with prototype 5G features
-  * srsENB - a full-stack SDR 4G eNodeB application
-  * srsEPC - a light-weight 4G core network implementation with MME, HSS and S/P-GW
+## How to build?
+```bash
+sudo apt install build-essential cmake libfftw3-dev libmbedtls-dev libboost-program-options-dev libconfig++-dev libsctp-dev
+mkdir build
+cmake -B build
+cmake --build build --target srsenb
+```
 
-For application features, build instructions and user guides see the [srsRAN 4G documentation](https://docs.srsran.com/projects/4g/).
-
-For license details, see LICENSE file.
-
-Support
-=======
-
-Mailing list: https://lists.srsran.com/mailman/listinfo/srsran-users
-
+## Docker
+You can simply use docker with out affecting local environment
+```bash
+docker compose build
+docker compose up
+```

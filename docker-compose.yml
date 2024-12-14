@@ -1,0 +1,12 @@
+services:
+  imsi_catcher:
+    image: imsi-catcher
+    container_name: imsi_catcher
+    build:
+      context: .
+      dockerfile: Dockerfile
+    privileged: true
+    volumes:
+      - "/dev/bus/usb/:/dev/bus/usb/"
+      - "./configs:/root/srsran/configs"
+    command: ./build/srsenb/src/srsenb configs/enb.conf
